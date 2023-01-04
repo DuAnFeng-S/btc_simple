@@ -3,6 +3,8 @@ package BLC
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"math"
 	"math/big"
 )
@@ -22,7 +24,7 @@ func (b *Block) GetTarget() []byte {
 */
 func (b *Block) GetBase4Nonce(nonce int64) []byte {
 	data :=
-		bytes.Join([][]byte{ToHexInt(b.Height), b.PreHash, ToHexInt(b.Timestamp), b.Data, ToHexInt(nonce)},
+		bytes.Join([][]byte{ToHexInt(b.Height), b.PreHash, ToHexInt(b.Timestamp), b.BackTrasactionSummary(), ToHexInt(nonce)},
 			[]byte{},
 		)
 	return data
@@ -56,7 +58,11 @@ func (b *Block) mine() int64 {
 		data := b.GetBase4Nonce(nonce)
 		hash = sha256.Sum256(data)
 		intHash.SetBytes(hash[:])
+		tohex := hex.EncodeToString(hash[:])
+		fmt.Printf("\r%s", tohex)
 		if intHash.Cmp(&intTarget) == -1 {
+			fmt.Println()
+			//println()
 			break
 		} else {
 			nonce++

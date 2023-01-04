@@ -50,7 +50,7 @@ func (chain *BlockChain) SingleCheck(key []byte) {
 			block = DeSerializeBlock(v)
 			fmt.Println("-----------------------------hash对应区块信息------------------------------------")
 			//fmt.Println("迭代器得到的block查看是否有preHash:", block)
-			fmt.Printf("data内容是:%s \n", string(block.Data))
+			fmt.Printf("data内容是:%s \n", block.Transactions)
 			fmt.Printf("区块高度为：%d \n", block.Height)
 			fmt.Printf("nonce值是：%d \n", block.Nonce)
 			fmt.Println("上一个节点是:", block.PreHash)
@@ -73,6 +73,7 @@ func (blockchain *BlockChain) DBStop() {
 	//defer db.Close()
 }
 
+// 返回当前数据库的区块链对象
 func ReturnChain() *BlockChain {
 
 	var lastHash []byte
@@ -89,6 +90,5 @@ func ReturnChain() *BlockChain {
 	Handle(err)
 
 	chain := BlockChain{lastHash, *db}
-	fmt.Println("chain的lasthash", chain.Tip)
 	return &chain
 }

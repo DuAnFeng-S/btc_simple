@@ -16,35 +16,32 @@ func (cli *CommandLine) printUsage() {
 	fmt.Println("运行本区块链您首先需要创建区块链并生成创世区块.")
 	fmt.Println("以下命令供您使用：")
 	fmt.Println("--------------------------------------------------------------------------------------------------------------")
-	fmt.Println("createblockchain                          ----> 输入数据创建一个创建一个创世区块")
+	fmt.Println("createblockchain  -address string                        ----> 输入数据创建一个创建一个创世区块")
 	fmt.Println("view                                       ----> 查看链中的所有区块交易信息")
 	fmt.Println("indexblock -key []byte{}                        ----> 输入区块hash，返回一个区块的信息")
-	fmt.Println("newblock -data string                         ----> 输入数据创建一个新的区块 string")
+	fmt.Println("send     -from []string  -to []string -amount []string                        ----> 输入数据创建一个新的区块 string")
 	fmt.Println("stop                                    ----> 输入数据创建一个新的区块 string")
-	fmt.Println("balance -address ADDRESS                            ----> Back the balance of the address you input")
-	fmt.Println("blockchaininfo                                      ----> Prints the blocks in the chain")
-	fmt.Println("send -from FROADDRESS -to TOADDRESS -amount AMOUNT  ----> Make a transaction and put it into candidate block")
-	fmt.Println("mine                                                ----> Mine and add a block to the chain")
+	fmt.Println("getBalance -address string                                   ----> 输入数据创建一个新的区块 string")
 	fmt.Println("--------------------------------------------------------------------------------------------------------------")
 }
 
-func (cli *CommandLine) createBlockChain() {
-	blockchain := CreateBlockChain()
-	fmt.Println("创世区块的hash是:", blockchain.Tip)
+func (cli *CommandLine) createBlockChain(address string) {
+	CreateBlockChain(address)
+	//fmt.Println("创世区块的hash是:", blockchain.Tip)
 }
 
 func (cli *CommandLine) view() {
 	chain := ReturnChain()
 	chain.ViewChainData()
 }
-func (cli *CommandLine) newblock(data string) {
-	fmt.Println("传入的数据是:", data)
-	chain := ReturnChain()
-	chain.AddBlock(data)
+func (cli *CommandLine) send(from, to []string, amount []string) {
+	//fmt.Println("传入的数据是:", txns)
+	//chain := ReturnChain()
+	//chain.MineNewBlock(from, to, amount)
 }
 func (cli *CommandLine) indexblock(key []byte) {
 	chain := ReturnChain()
-	fmt.Println("输入的has是:", key)
+	//fmt.Println("输入的has是:", key)
 	chain.SingleCheck(key)
 }
 
@@ -59,35 +56,50 @@ func (cli *CommandLine) stop() {
 	chain.DBStop()
 }
 
+func (cli *CommandLine) getBalance(address string) {
+	println("输入的地址是：", address)
+	//chain := ReturnChain()
+	//chain.GetBalance(address)
+}
+
 func (cli *CommandLine) Run() {
 	cli.validateArgs()
 
-	flag.NewFlagSet("createblockchain", flag.ExitOnError)
+	CreateBlockChainCmd := flag.NewFlagSet("createblockchain", flag.ExitOnError)
 	flag.NewFlagSet("view", flag.ExitOnError)
 	flag.NewFlagSet("stop", flag.ExitOnError)
-	getBlockChainInfoCmd := flag.NewFlagSet("newblock", flag.ExitOnError)
+	getBlockChainInfoCmd := flag.NewFlagSet("send", flag.ExitOnError)
 	sendCmd := flag.NewFlagSet("indexblock", flag.ExitOnError)
+	getBalanceCmd := flag.NewFlagSet("getbalance", flag.ExitOnError)
 
 	//createBlockChainOwner := createBlockChainCmd.String("data", "", "The address refer to the owner of blockchain")
 	//balanceAddress := balanceCmd.String("address", "", "Who need to get balance amount")
 	sendFromAddress := sendCmd.String("key", "", "输入区块hash值")
-	datastring := getBlockChainInfoCmd.String("data", "区块数据", "数据交易数据")
+	createChain := CreateBlockChainCmd.String("address", "杜岸峰", "输入创世区块初始化货币的地址")
+	fromaddress := getBlockChainInfoCmd.String("from", "发送者", "发送者数组")
+	toaddress := getBlockChainInfoCmd.String("to", "接收者", "接收者数组")
+	amounts := getBlockChainInfoCmd.String("amount", "区块数据", "发送金额数组")
+
+	hexAddress := getBalanceCmd.String("address", "hexString", "输入地址")
 	//sendToAddress := sendCmd.String("to", "", "Destination address")
 	//sendAmount := sendCmd.Int("amount", 0, "Amount to send")
 
 	switch os.Args[1] {
 	case "createblockchain":
-		cli.createBlockChain()
-		//err := createBlockChainCmd.Parse(os.Args[2:])
-		//Handle(err)
+		err := CreateBlockChainCmd.Parse(os.Args[2:])
+		Handle(err)
 
 	case "view":
 		cli.view()
 		//err := balanceCmd.Parse(os.Args[2:])
 		//Handle(err)
 
-	case "newblock":
+	case "send":
 		err := getBlockChainInfoCmd.Parse(os.Args[2:])
+		Handle(err)
+
+	case "getbalance":
+		err := getBalanceCmd.Parse(os.Args[2:])
 		Handle(err)
 
 	case "indexblock":
@@ -102,20 +114,51 @@ func (cli *CommandLine) Run() {
 		runtime.Goexit()
 	}
 
-	//if sendCmd.Parsed() {
-	//	if *sendFromAddress == "" || *sendToAddress == "" || *sendAmount <= 0 {
-	//		sendCmd.Usage()
-	//		runtime.Goexit()
-	//	}
-	//	cli.send(*sendFromAddress, *sendToAddress, *sendAmount)
-	//}
-
 	if getBlockChainInfoCmd.Parsed() {
-		if *datastring == "" {
+		if *fromaddress == "" {
 			sendCmd.Usage()
 			runtime.Goexit()
 		}
-		cli.newblock(string(*datastring))
+		if *toaddress == "" {
+			sendCmd.Usage()
+			runtime.Goexit()
+		}
+		if *amounts == "" {
+			sendCmd.Usage()
+			runtime.Goexit()
+		}
+
+		//fmt.Println("输入的数据为：", *fromaddress)
+		from := JsonToArray(*fromaddress)
+		to := JsonToArray(*toaddress)
+		amount := JsonToArray(*amounts)
+
+		if len(from) == len(to) && len(to) == len(amount) {
+			//fmt.Println("传入数据正确", )
+			cli.send(from, to, amount)
+		} else {
+			fmt.Println("传入的数据有错误")
+		}
+		//fmt.Println(from[0])
+		//fmt.Println(to[0])
+		//fmt.Println(amount[0])
+
+	}
+
+	if CreateBlockChainCmd.Parsed() {
+		if *createChain == "" {
+			sendCmd.Usage()
+			runtime.Goexit()
+		}
+		cli.createBlockChain(*createChain)
+	}
+
+	if getBalanceCmd.Parsed() {
+		if *hexAddress == "" {
+			sendCmd.Usage()
+			runtime.Goexit()
+		}
+		cli.getBalance(*hexAddress)
 	}
 
 	if sendCmd.Parsed() {

@@ -1,6 +1,7 @@
 package BLC
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/boltdb/bolt"
 	"math/big"
@@ -14,13 +15,26 @@ type BlockChain struct {
 	DataBase bolt.DB
 }
 
-func (bc *BlockChain) AddBlock(data string) {
-	//newBlock := NewBlock(bc.Blocks[len(bc.Blocks)-1].Hash, data, bc.Blocks[len(bc.Blocks)-1].Height+1)
-	//bc.Blocks = append(bc.Blocks, newBlock)
-	//return newBlock
+// 挖区块
+func (bc *BlockChain) MineNewBlock(from, to, amount []string) {
 
-	//db, err := bolt.Open(ChainName, 0600, nil)
-	//Handle(err)
+	txs := []*Transaction{nil}
+	// 取到每一组的form，to，amount，把它生成tx。然后把他追加到txs中
+	for i := 0; i < len(from); i++ {
+		unSpentTx := bc.UnSpentTx(from[i])
+		fmt.Println(unSpentTx)
+		tx, _ := bc.CreateTransaction([]byte{0}, []byte{0}, 1)
+		txs = append(txs, tx)
+	}
+
+	// 把数组打包成交易
+
+	// 把交易发送到数据库
+	bc.sendToDB(txs)
+}
+
+// 发送交易到链
+func (bc *BlockChain) sendToDB(txns []*Transaction) {
 
 	err := bc.DataBase.Update(func(tx *bolt.Tx) error {
 		table := tx.Bucket([]byte(TableName))
@@ -29,19 +43,12 @@ func (bc *BlockChain) AddBlock(data string) {
 			// 读取最后一个区块的数据
 			v := table.Get(bc.Tip)
 			preBlock := DeSerializeBlock(v)
-			newBlock := NewBlock(bc.Tip, data, preBlock.Height+1)
+			newBlock := NewBlock(bc.Tip, txns, preBlock.Height+1)
 			//fmt.Println("写入数据库的block数据为：", newBlock)
 			table.Put(newBlock.Hash, newBlock.Serialize())
-
 			bc.Tip = newBlock.Hash
-			//fmt.Println("区块hash：", newBlock.Hash)
-
 			err := table.Put([]byte(LastHash), newBlock.Hash)
 			Handle(err)
-			//fmt.Println("添加区块成功...")
-
-			//fmt.Println("前一个节点的高度", preBlock.Height)
-			//fmt.Println(preBlock.Nonce)
 		}
 		return nil
 	})
@@ -50,14 +57,14 @@ func (bc *BlockChain) AddBlock(data string) {
 
 }
 
-func CreateBlockChain() *BlockChain {
+// 创建区块链
+func CreateBlockChain(address string) *BlockChain {
 
 	blockchain := BlockChain{}
 	//blockchain.Blocks = append(blockchain.Blocks, GenesisBlock())
-
 	db, err := bolt.Open(ChainName, 0600, nil)
 	Handle(err)
-	block := GenesisBlock()
+	block := GenesisBlock(address)
 
 	db.Update(func(tx *bolt.Tx) error {
 		table, err2 := tx.CreateBucket([]byte(TableName))
@@ -81,6 +88,7 @@ func CreateBlockChain() *BlockChain {
 	return &blockchain
 }
 
+// 初始化迭代器
 func (blockchain *BlockChain) initChainIterator() *BlockChainIterator {
 
 	iterator := BlockChainIterator{blockchain.Tip, blockchain.DataBase}
@@ -98,18 +106,36 @@ func (blockchain *BlockChain) ViewChainData() {
 		2.用迭代器返回前一个block，Iterator(lasthash)
 		3.用前节点继续打印
 	*/
-	i := 0
+	d := 0
 	for {
 		block := iterator.Iterator()
-		fmt.Println("----------------------------", i, "-------------------------------------")
-		i++
+		fmt.Println("----------------------------", d, "-------------------------------------")
+
 		//fmt.Println("迭代器得到的block查看是否有preHash:", block)
-		fmt.Printf("data内容是:%s \n", string(block.Data))
 		fmt.Printf("区块高度为：%d \n", block.Height)
 		fmt.Printf("nonce值是：%d \n", block.Nonce)
-		fmt.Println("上一个节点是:", block.PreHash)
+		fmt.Println("上一个节点是:", hex.EncodeToString(block.PreHash))
 		fmt.Println("时间戳是：", time.Unix(block.Timestamp, 0).Format("2006-01-02 03:04:05 PM"))
-		fmt.Println("本节点hash:", block.Hash)
+		fmt.Println("本节点hash:", hex.EncodeToString(block.Hash))
+		for i := 0; i < len(block.Transactions); i++ {
+			fmt.Println("----------------------------区块", d, "中的第", i, "笔交易-------------------------------------")
+			fmt.Println("本交易的hash", hex.EncodeToString(block.Transactions[i].Hash))
+
+			fmt.Println("交易Output:")
+			for k := 0; k < len(block.Transactions[k].Inputs); k++ {
+				fmt.Println("Amount:", block.Transactions[i].Outputs[k].ReceiveAmount)
+				fmt.Println("toAddress:", string(block.Transactions[i].Outputs[k].People[:]))
+			}
+			fmt.Println("")
+
+			fmt.Println("交易Input:")
+			for j := 0; j < len(block.Transactions[j].Inputs); j++ {
+				fmt.Println("fromAddress:", string(block.Transactions[i].Inputs[j].People[:]))
+				fmt.Println("消耗的交易hash:", hex.EncodeToString(block.Transactions[i].Inputs[j].Hash))
+				fmt.Println("在一笔交易中TxOutput的索引值:", block.Transactions[i].Inputs[j].Index)
+			}
+
+		}
 		fmt.Println("")
 
 		var hashInt big.Int
@@ -118,6 +144,28 @@ func (blockchain *BlockChain) ViewChainData() {
 			fmt.Println("遍历完成...")
 			break
 		}
+		d++
 	}
 
+}
+
+// 返回所有未花费的TxOutput
+func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
+	/*
+			从后往前遍历，得到所有不在spendTxs中的数据。这样开发的理由：先存在，再使用
+		spendTxs的数据哪里来的？具体过程思考
+
+	*/
+	var unSpentTxs []*Transaction
+	spentTxs := make(map[string][]int) // can't use type []byte as key value
+	println(spentTxs)
+	return unSpentTxs
+}
+
+//返回所有账户的总余额
+func (bc *BlockChain) GetBalance(address string) *int {
+
+	unSpentTxs := bc.UnSpentTx(address)
+	fmt.Println(unSpentTxs)
+	return nil
 }

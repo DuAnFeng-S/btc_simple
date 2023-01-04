@@ -5,13 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/gob"
+	"encoding/json"
 	"log"
 )
 
 // 返回一个32字节的hash
 // 在我们进行hash运算的时候，是先把所有的数据转换为16进制的字节码
 func (b *Block) SetHash() {
-	information := bytes.Join([][]byte{ToHexInt(b.Height), b.PreHash, ToHexInt(b.Timestamp), b.Data, ToHexInt(b.Nonce)}, []byte{})
+	information := bytes.Join([][]byte{ToHexInt(b.Height), b.PreHash, ToHexInt(b.Timestamp), b.BackTrasactionSummary(), ToHexInt(b.Nonce)}, []byte{})
 	hash := sha256.Sum256(information)
 	b.Hash = hash[:]
 }
@@ -45,4 +46,15 @@ func DeSerializeBlock(data []byte) *Block {
 	err := decoder.Decode(&block)
 	Handle(err)
 	return &block
+}
+
+//	json转数组
+func JsonToArray(jsonString string) []string {
+	var sArr []string
+	//prefix := bytes.TrimPrefix([]byte(jsonString), []byte("\xef\xbb\xbf"))
+	if err := json.Unmarshal([]byte(jsonString), &sArr); err != nil {
+		log.Panic(err)
+	}
+	//fmt.Println(sArr)
+	return sArr
 }
