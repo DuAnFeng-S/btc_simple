@@ -3,9 +3,10 @@ package BLC
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/boltdb/bolt"
 	"math/big"
 	"time"
+
+	"github.com/boltdb/bolt"
 )
 
 // 这种记录的方式无法持久化的保存数据。区块链系统进行调试时每次都需要重新创建区块链，区块链并没有得到保存，这与实际的区块链系统不符
@@ -153,6 +154,10 @@ func (blockchain *BlockChain) ViewChainData() {
 func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
 	/*
 			从后往前遍历，得到所有不在spendTxs中的数据。这样开发的理由：先存在，再使用
+			通过两层遍历，拿到这笔交易的output数组和区块hash
+			再循环数组，得到每一个output的。通过查看spendTxs[区块hash]来判断index是否和output的索引相等，如果相等则说明被消费，进入下一次循环，否则：
+			判断这笔交易的receiver是不是等于address，等于则添加到unSpent。
+			最后再另一个for中得到所有的inputs，如果sender是address，则把数据添加到spentTxs[in.hash] = in.outindex
 		spendTxs的数据哪里来的？具体过程思考
 
 	*/
