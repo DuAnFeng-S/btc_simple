@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/gob"
+	"fmt"
 )
 
 type Transaction struct {
@@ -60,22 +61,50 @@ func (out *TxOutput) ToAddressRight(address []byte) bool {
 }
 
 // 根据输入创建交易
-func (bc *BlockChain) CreateTransaction(from, to []byte, amount int) (*Transaction, bool) {
+func (bc *BlockChain) CreateTransaction(from, to string, amount int) (Transaction, bool) {
 
 	//通过一个方法，返回总余额和一个字典，字典中包括的是一个交易hash和对应的未花费的索引值。总余额是根据所有为花费的交易的总和
 
+	/*
+		1.找到from者的所有未花费的交易和余额，如果金额不够，直接return nil ,false
+		2.从前往后遍历，找到所有能凑到amount的txAmount
+		3.设置tx
+		// &TxInput{[]byte{0}, index, []byte(from)}
+		// &TxOutput{amount, []byte(to)}
+		// &TxOutput{txAmount - amount, []byte(from)}
+	*/
 	//var txn *Transaction
 	var txInputs []*TxInput
 	var txOutputs []*TxOutput
+	outAmount, outMap := bc.FindSpendableOutputs(from, amount)
+	println("找到的金额是：", outAmount)
 
-	txinput := &TxInput{[]byte{0}, 0, from}
+	if outAmount < amount {
+		fmt.Println("Not enough coins!")
+		return Transaction{}, false
+	}
 
-	txInputs = append(txInputs, txinput)
+	for txid, outidx := range outMap {
+		//转换为16进制
+		//txID, err := hex.DecodeString(txid)
+		//Handle(err)
+		input := &TxInput{[]byte(txid), outidx, []byte(from)}
+		txInputs = append(txInputs, input)
+	}
 
-	txoutput := &TxOutput{amount, to}
-	txOutputs = append(txOutputs, txoutput)
+	txOutputs = append(txOutputs, &TxOutput{amount, []byte(to)})
+	if outAmount > amount {
+		txOutputs = append(txOutputs, &TxOutput{outAmount - amount, []byte(from)})
+	}
+	println("新的Amount", outAmount-amount)
 
-	//txn := &Transaction{[]byte{0}, txInputs, txOutputs}
+	txn := Transaction{nil, txInputs, txOutputs}
+	txn.SetTransactionHash()
 
-	return nil, true
+	//println("创建的交易的样子：")
+	//println(txn.Hash)
+	//println(txn.Inputs)
+	//println(txn.Outputs)
+	//println("创建一笔交易成功")
+	return txn, true
 }

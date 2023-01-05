@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/boltdb/bolt"
 	"math/big"
+	"strconv"
 	"time"
 )
 
@@ -15,46 +16,85 @@ type BlockChain struct {
 	DataBase bolt.DB
 }
 
-// 挖区块
-func (bc *BlockChain) MineNewBlock(from, to, amount []string) {
+// 把创建的交易数组传入进行挖矿
+//
+func (bc *BlockChain) Mine(txs []*Transaction) {
+	/*
+		自己去交易池中拿到交易池中的数据，根据自己的条件自己去交易池中添加交易到本次的数组
+	*/
+	//var txs []*Transaction
 
-	txs := []*Transaction{nil}
+	//println("开始写交易到数据库")
+	bc.SendTransactions(txs)
+}
+
+// 创建一个交易池
+
+// 创建交易数组 由cli的外部调用这个方法，解析所有的交易数据，
+func (bc *BlockChain) CreateTransactions(from, to, amount []string) []*Transaction {
+
+	txs := []*Transaction{}
 	// 取到每一组的form，to，amount，把它生成tx。然后把他追加到txs中
 	for i := 0; i < len(from); i++ {
+		//println("查找所有未花费的交易")
 		unSpentTx := bc.UnSpentTx(from[i])
 		fmt.Println(unSpentTx)
-		tx, _ := bc.CreateTransaction([]byte{0}, []byte{0}, 1)
-		txs = append(txs, tx)
+		// 把数组打包成交易
+		amm, err := strconv.Atoi(amount[i])
+		Handle(err)
+		//println("开始创建每一笔交易")
+		//println(from[i])
+		//println(to[i])
+		//println(amm)
+		tx, flag := bc.CreateTransaction(from[i], to[i], amm)
+		if flag == false {
+			continue
+		}
+		println("交易生成结果", flag)
+		txs = append(txs, &tx)
 	}
-
-	// 把数组打包成交易
+	return txs
 
 	// 把交易发送到数据库
-	bc.sendToDB(txs)
+	//bc.SendTransactions(txs)
 }
 
 // 发送交易到链
-func (bc *BlockChain) sendToDB(txns []*Transaction) {
+func (bc *BlockChain) SendTransactions(txns []*Transaction) {
 
+	var newBlock *Block
+	//blockchain := BlockChain{}
 	err := bc.DataBase.Update(func(tx *bolt.Tx) error {
 		table := tx.Bucket([]byte(TableName))
 
 		if table != nil {
-			// 读取最后一个区块的数据
+
 			v := table.Get(bc.Tip)
+			//println("2", BytesToInt(bc.Tip))
 			preBlock := DeSerializeBlock(v)
-			newBlock := NewBlock(bc.Tip, txns, preBlock.Height+1)
+			//println("上一个区块的高度:", preBlock.Height)
+			//println("3")
+			//println(string(bc.Tip[:]))
+			fmt.Println(bc.Tip)
+			newBlock = NewBlock(bc.Tip, txns, preBlock.Height+1)
+			//println(newBlock.Height)
+			//if newBlock != nil {
+			//	fmt.Println("区块创建成功")
+			//} else {
+			//	fmt.Println("区块链创建失败")
+			//}
 			//fmt.Println("写入数据库的block数据为：", newBlock)
 			table.Put(newBlock.Hash, newBlock.Serialize())
 			bc.Tip = newBlock.Hash
+
 			err := table.Put([]byte(LastHash), newBlock.Hash)
 			Handle(err)
 		}
 		return nil
 	})
 	Handle(err)
+	//return &blockchain
 	//defer db.Close()
-
 }
 
 // 创建区块链
@@ -106,6 +146,7 @@ func (blockchain *BlockChain) ViewChainData() {
 		2.用迭代器返回前一个block，Iterator(lasthash)
 		3.用前节点继续打印
 	*/
+
 	d := 0
 	for {
 		block := iterator.Iterator()
@@ -121,18 +162,20 @@ func (blockchain *BlockChain) ViewChainData() {
 			fmt.Println("----------------------------区块", d, "中的第", i, "笔交易-------------------------------------")
 			fmt.Println("本交易的hash", hex.EncodeToString(block.Transactions[i].Hash))
 
-			fmt.Println("交易Output:")
-			for k := 0; k < len(block.Transactions[k].Inputs); k++ {
-				fmt.Println("Amount:", block.Transactions[i].Outputs[k].ReceiveAmount)
-				fmt.Println("toAddress:", string(block.Transactions[i].Outputs[k].People[:]))
-			}
-			fmt.Println("")
-
 			fmt.Println("交易Input:")
-			for j := 0; j < len(block.Transactions[j].Inputs); j++ {
+			for j := 0; j < len(block.Transactions[i].Inputs); j++ {
+				fmt.Println("----------------------------区块", d, "中的第", i, "笔交易的第", j, "个output-------------------------------------")
 				fmt.Println("fromAddress:", string(block.Transactions[i].Inputs[j].People[:]))
 				fmt.Println("消耗的交易hash:", hex.EncodeToString(block.Transactions[i].Inputs[j].Hash))
 				fmt.Println("在一笔交易中TxOutput的索引值:", block.Transactions[i].Inputs[j].Index)
+			}
+
+			fmt.Println("")
+			fmt.Println("交易Output:")
+			for k := 0; k < len(block.Transactions[i].Outputs); k++ {
+				fmt.Println("----------------------------区块", d, "中的第", i, "笔交易的第", k, "个output-------------------------------------")
+				fmt.Println("Amount:", block.Transactions[i].Outputs[k].ReceiveAmount)
+				fmt.Println("toAddress:", string(block.Transactions[i].Outputs[k].People[:]))
 			}
 
 		}
@@ -148,11 +191,6 @@ func (blockchain *BlockChain) ViewChainData() {
 	}
 
 }
-
-//func (tx *Transaction) IsBase() bool{
-//
-//	return true
-//}
 
 // 返回所有未花费的TxOutput
 func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
@@ -170,7 +208,6 @@ func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
 		5.第二层： 查看本笔交易是不是创世交易，如果不是才可以循环inputs，然后把交易的inputs中sender等于address的人加入spentTxs
 		6.第一层：当迭代到第一层的时候退出
 		7.函数中返回所有的unSpentTxs
-
 	*/
 	var unSpentTxs []*Transaction
 	spentTxs := make(map[string][]int) // 存储的是每个tx中，已经被消费的output数组的数组序列
@@ -191,7 +228,7 @@ all:
 					}
 				}
 				if people.ToAddressRight([]byte(address)) {
-					fmt.Println("找到了一笔交易并成功添加")
+					fmt.Println("找到了一笔交易并成功添加到数组")
 					unSpentTxs = append(unSpentTxs, tx)
 				}
 			}
@@ -203,7 +240,6 @@ all:
 						spentTxs[inHash] = append(spentTxs[inHash], in.Index)
 					}
 				}
-
 			}
 		}
 		//当迭代到创世区块的时候退出
@@ -213,6 +249,9 @@ all:
 			//fmt.Println("遍历完成...")
 			break all
 		}
+		//if bytes.Equal(block.PreHash, bc.BackOgPrevHash()) {
+		//	break all
+		//}
 	}
 	//println(spentTxs)
 	return unSpentTxs
@@ -234,7 +273,7 @@ func (chain *BlockChain) BackOgPrevHash() []byte {
 	return ogprevhash
 }
 
-//返回所有账户的总余额
+//返回所有账户的总余额和未花费的tx
 func (bc *BlockChain) GetBalance(address string) (int, map[string]int) {
 	unspentOuts := make(map[string]int)
 	var sum int
@@ -253,4 +292,26 @@ func (bc *BlockChain) GetBalance(address string) (int, map[string]int) {
 	}
 	//fmt.Println(unSpentTxs)
 	return sum, unspentOuts
+}
+
+func (bc *BlockChain) FindSpendableOutputs(address string, amount int) (int, map[string]int) {
+	unspentOuts := make(map[string]int)
+	unspentTxs := bc.UnSpentTx(address)
+	accumulated := 0
+
+Work:
+	for _, tx := range unspentTxs {
+		txID := hex.EncodeToString(tx.Hash)
+		for outIdx, out := range tx.Outputs {
+			if out.ToAddressRight([]byte(address)) && accumulated < amount {
+				accumulated += out.ReceiveAmount
+				unspentOuts[txID] = outIdx
+				if accumulated >= amount {
+					break Work
+				}
+				continue Work // one transaction can only have one output referred to adderss
+			}
+		}
+	}
+	return accumulated, unspentOuts
 }
