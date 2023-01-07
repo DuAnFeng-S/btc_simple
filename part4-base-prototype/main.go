@@ -12,6 +12,8 @@ SendTransactions
 完成查询和金额不够的转换
 ** 注意[]byte转换为十六进制位字符的时候，先转换为string
 
+
+问题：当一个区块中有多笔转账的时候会发生双花
 */
 func main() {
 	cmd := BLC.CommandLine{}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/gob"
+	"encoding/hex"
 	"fmt"
 )
 
@@ -11,6 +12,10 @@ type Transaction struct {
 	Hash    []byte
 	Inputs  []*TxInput
 	Outputs []*TxOutput
+}
+
+type Transactions struct {
+	Txs []*Transaction
 }
 
 type TxInput struct {
@@ -44,7 +49,9 @@ func (tx *Transaction) SetTransactionHash() {
 func BaseTx(toaddress []byte) *Transaction {
 	txIn := &TxInput{[]byte{}, -1, []byte{}}
 	txOut := &TxOutput{InitCoin, toaddress}
-	tx := Transaction{[]byte("这是创世区块的交易"), []*TxInput{txIn}, []*TxOutput{txOut}}
+	//toString := hex.EncodeToString([]byte("杜岸峰的区块链"))
+	tx := Transaction{[]byte("杜岸峰的区块链"), []*TxInput{txIn}, []*TxOutput{txOut}}
+	tx.SetTransactionHash()
 	return &tx
 }
 
@@ -61,7 +68,8 @@ func (out *TxOutput) ToAddressRight(address []byte) bool {
 }
 
 // 根据输入创建交易
-func (bc *BlockChain) CreateTransaction(from, to string, amount int) (Transaction, bool) {
+//func (txs *Transaction) CreateTransaction(from, to string, amount int) (Transaction, bool) {
+func (bc *BlockChain) CreateTransaction(from, to string, amount int, txs []*Transaction) (Transaction, bool) {
 
 	//通过一个方法，返回总余额和一个字典，字典中包括的是一个交易hash和对应的未花费的索引值。总余额是根据所有为花费的交易的总和
 
@@ -73,21 +81,34 @@ func (bc *BlockChain) CreateTransaction(from, to string, amount int) (Transactio
 		// &TxOutput{amount, []byte(to)}
 		// &TxOutput{txAmount - amount, []byte(from)}
 	*/
-	//var txn *Transaction
+
+	/*
+		先从txs中倒叙输出交易，先和txs中的进行比较，然后再进入数据库的tx比较
+
+	*/
+	if from == to {
+		println("发送地址和接受地址不能相同")
+		return Transaction{}, false
+	}
 	var txInputs []*TxInput
 	var txOutputs []*TxOutput
-	outAmount, outMap := bc.FindSpendableOutputs(from, amount)
-	println("找到的金额是：", outAmount)
+	outAmount, outMap := bc.FindSpendableOutputs(from, amount, txs)
+	println("对金额的查找完成")
 
 	if outAmount < amount {
-		fmt.Println("Not enough coins!")
+		fmt.Println("没有足够的金额！", from)
 		return Transaction{}, false
 	}
 
 	for txid, outidx := range outMap {
+
+		decodeString, _ := hex.DecodeString(txid)
+		fmt.Println("hash.string:", decodeString)
 		//转换为16进制
 		//txID, err := hex.DecodeString(txid)
 		//Handle(err)
+		//fmt.Println("最小未花费的交易数组：", txID, ":", outidx)
+
 		input := &TxInput{[]byte(txid), outidx, []byte(from)}
 		txInputs = append(txInputs, input)
 	}
@@ -96,15 +117,58 @@ func (bc *BlockChain) CreateTransaction(from, to string, amount int) (Transactio
 	if outAmount > amount {
 		txOutputs = append(txOutputs, &TxOutput{outAmount - amount, []byte(from)})
 	}
-	println("新的Amount", outAmount-amount)
 
 	txn := Transaction{nil, txInputs, txOutputs}
+	fmt.Println("设置完一笔交易hash")
 	txn.SetTransactionHash()
 
-	//println("创建的交易的样子：")
-	//println(txn.Hash)
-	//println(txn.Inputs)
-	//println(txn.Outputs)
-	//println("创建一笔交易成功")
 	return txn, true
+}
+
+// 数组中，针对这个地址的未花费的交易输出
+func GetTxsFromArraytxs(address string, txs []*Transaction) []*Transaction {
+
+	var unSpentTxs []*Transaction
+
+	spentTxs := make(map[string][]int)
+
+	for i := len(txs) - 1; i >= 0; i-- {
+		println("进入了循环：", i)
+		txHash := txs[i].Hash
+		th := hex.EncodeToString(txHash)
+		fmt.Println("看看hash是不是等于3e6:", th)
+	IterOutputs:
+		for outIdx, out := range txs[i].Outputs {
+
+			println("判断是否存在已经花费的数组中")
+
+			if spentTxs[th] != nil { //失败点
+				println("如果存在就遍历花费数组中的value数组，如果相同，代表被花费过")
+				for _, spentOut := range spentTxs[th] {
+					println(spentTxs[th])
+					println(spentOut)
+					if spentOut == outIdx {
+						println("一次都没有进来过？")
+						continue IterOutputs
+					}
+				}
+			}
+
+			if out.ToAddressRight([]byte(address)) {
+				//这里添加的txs是没有交易hash的
+				inTxID := hex.EncodeToString(txs[i].Hash)
+				fmt.Println("添加了un的hash是：", inTxID)
+				unSpentTxs = append(unSpentTxs, txs[i])
+			}
+		}
+		//if !txs[i].IsBase() {
+		for _, in := range txs[i].Inputs {
+			if in.FromAddressRight([]byte(address)) {
+				inTxID := hex.EncodeToString(in.Hash)
+				fmt.Println("添加了in的值是：", inTxID)
+				spentTxs[inTxID] = append(spentTxs[inTxID], in.Index)
+			}
+		}
+	}
+	return unSpentTxs
 }

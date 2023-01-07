@@ -3,6 +3,7 @@ package BLC
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math"
 	"math/big"
@@ -59,8 +60,8 @@ func (b *Block) mine() int64 {
 		//println("getbasenonce成功")
 		hash = sha256.Sum256(data)
 		intHash.SetBytes(hash[:])
-		//tohex := hex.EncodeToString(hash[:])
-		//fmt.Printf("\r%s", tohex)
+		tohex := hex.EncodeToString(hash[:])
+		fmt.Printf("\r%s", tohex)
 		if intHash.Cmp(&intTarget) == -1 {
 			fmt.Println()
 			//println()

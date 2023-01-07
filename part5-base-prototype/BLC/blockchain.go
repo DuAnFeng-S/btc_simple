@@ -36,18 +36,13 @@ func (bc *BlockChain) CreateTransactions(from, to, amount []string) []*Transacti
 	txs := []*Transaction{}
 	// 取到每一组的form，to，amount，把它生成tx。然后把他追加到txs中
 	for i := 0; i < len(from); i++ {
-		//println("查找所有未花费的交易")
-		unSpentTx := bc.UnSpentTx(from[i])
-		fmt.Println(unSpentTx)
-		// 把数组打包成交易
 		amm, err := strconv.Atoi(amount[i])
 		Handle(err)
-		//println("开始创建每一笔交易")
-		//println(from[i])
-		//println(to[i])
-		//println(amm)
-		tx, flag := bc.CreateTransaction(from[i], to[i], amm)
+		println("开始创建每一笔交易")
+
+		tx, flag := bc.CreateTransaction(from[i], to[i], amm, txs)
 		if flag == false {
+			println("创建交易失败")
 			continue
 		}
 		println("交易生成结果", flag)
@@ -153,8 +148,8 @@ func (blockchain *BlockChain) ViewChainData() {
 		fmt.Println("----------------------------", d, "-------------------------------------")
 
 		//fmt.Println("迭代器得到的block查看是否有preHash:", block)
-		fmt.Printf("区块高度为：%d \n", block.Height)
-		fmt.Printf("nonce值是：%d \n", block.Nonce)
+		fmt.Println("区块高度为：", block.Height)
+		fmt.Println("nonce值是:", block.Nonce)
 		fmt.Println("上一个节点是:", hex.EncodeToString(block.PreHash))
 		fmt.Println("时间戳是：", time.Unix(block.Timestamp, 0).Format("2006-01-02 03:04:05 PM"))
 		fmt.Println("本节点hash:", hex.EncodeToString(block.Hash))
@@ -194,10 +189,12 @@ func (blockchain *BlockChain) ViewChainData() {
 
 // 返回所有未花费的TxOutput
 func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
+
 	/*
 				从后往前遍历，得到所有不在spendTxs中的数据。这样开发的理由：先存在，再使用
 				通过两层遍历，拿到这笔交易的output数组和每一笔交易hash
 				再循环数组，得到每一个output的。通过查看spendTxs[区块hash]来判断index是否和output的索引相等，如果相等则说明被消费，进入下一次循环，否则：
+				查找交易的时候，要从后往前找，这样才能接上同一个区块中的已经消费的out
 				判断这笔交易的receiver是不是等于address，等于则添加到unSpent。
 				最后再另一个for中得到所有的inputs，如果sender是address，则把数据添加到spentTxs[in.hash] = in.outindex
 			spendTxs的数据哪里来的？具体过程思考
@@ -215,11 +212,13 @@ func (bc *BlockChain) UnSpentTx(address string) []*Transaction {
 all:
 	for {
 		block := iterator.Iterator()
-		for _, tx := range block.Transactions {
+		// out要从后往前遍历
+		for i := len(block.Transactions) - 1; i >= 0; i-- {
+			tx := block.Transactions[i]
 			txHash := hex.EncodeToString(tx.Hash)
 		IterOutputs:
-			for outIndex, people := range tx.Outputs {
-				fmt.Println("进入了out的交易循环")
+			for outIndex, out := range tx.Outputs {
+				//fmt.Println("进入了out的交易循环")
 				if spentTxs[txHash] != nil {
 					for _, spentOut := range spentTxs[txHash] {
 						if spentOut == outIndex {
@@ -227,8 +226,8 @@ all:
 						}
 					}
 				}
-				if people.ToAddressRight([]byte(address)) {
-					fmt.Println("找到了一笔交易并成功添加到数组")
+				if out.ToAddressRight([]byte(address)) {
+					//fmt.Println("找到了一笔交易并成功添加到数组")
 					unSpentTxs = append(unSpentTxs, tx)
 				}
 			}
@@ -237,11 +236,41 @@ all:
 				for _, in := range tx.Inputs {
 					if in.FromAddressRight([]byte(address)) {
 						inHash := hex.EncodeToString(in.Hash)
+						//这个in.index是怎么来的
 						spentTxs[inHash] = append(spentTxs[inHash], in.Index)
 					}
 				}
 			}
+
 		}
+		//for _, tx := range block.Transactions {
+		//	txHash := hex.EncodeToString(tx.Hash)
+		//IterOutputs:
+		//	for outIndex, out := range tx.Outputs {
+		//		//fmt.Println("进入了out的交易循环")
+		//		if spentTxs[txHash] != nil {
+		//			for _, spentOut := range spentTxs[txHash] {
+		//				if spentOut == outIndex {
+		//					continue IterOutputs
+		//				}
+		//			}
+		//		}
+		//		if out.ToAddressRight([]byte(address)) {
+		//			//fmt.Println("找到了一笔交易并成功添加到数组")
+		//			unSpentTxs = append(unSpentTxs, tx)
+		//		}
+		//	}
+		//
+		//	if !tx.IsBase() {
+		//		for _, in := range tx.Inputs {
+		//			if in.FromAddressRight([]byte(address)) {
+		//				inHash := hex.EncodeToString(in.Hash)
+		//				//这个in.index是怎么来的
+		//				spentTxs[inHash] = append(spentTxs[inHash], in.Index)
+		//			}
+		//		}
+		//	}
+		//}
 		//当迭代到创世区块的时候退出
 		var hashInt big.Int
 		hashInt.SetBytes(block.PreHash)
@@ -274,7 +303,7 @@ func (chain *BlockChain) BackOgPrevHash() []byte {
 }
 
 //返回所有账户的总余额和未花费的tx
-func (bc *BlockChain) GetBalance(address string) (int, map[string]int) {
+func (bc *BlockChain) GetBalanceAndOutArray(address string) (int, map[string]int) {
 	unspentOuts := make(map[string]int)
 	var sum int
 	//拿到所有未花费的txns
@@ -285,6 +314,7 @@ func (bc *BlockChain) GetBalance(address string) (int, map[string]int) {
 		hexT := hex.EncodeToString(tx.Hash)
 		for outIndex, out := range tx.Outputs {
 			if out.ToAddressRight([]byte(address)) {
+				println(address, "未花费的金额有：", out.ReceiveAmount)
 				sum += out.ReceiveAmount
 				unspentOuts[hexT] = outIndex
 			}
@@ -294,18 +324,68 @@ func (bc *BlockChain) GetBalance(address string) (int, map[string]int) {
 	return sum, unspentOuts
 }
 
-func (bc *BlockChain) FindSpendableOutputs(address string, amount int) (int, map[string]int) {
+// 问题出现的地方，数据库中的最后一笔交易已经被花费了，但是我在拼接的时候还是加上了那一笔已经被消费的交易，所以值不对
+// 解决方法，把带有重复的拼接后的数组在一次进行GetTxsFromArraytxs，
+func (bc *BlockChain) FindSpendableOutputs(address string, amount int, txs []*Transaction) (int, map[string]int) {
 	unspentOuts := make(map[string]int)
+	var unspentTxsArray []*Transaction
+
 	unspentTxs := bc.UnSpentTx(address)
+	fmt.Println("开始前交易的长度：", len(txs))
+
+	if len(txs) != 0 {
+		for _, tx := range txs {
+			fmt.Println("txhash", hex.EncodeToString(tx.Hash))
+
+			for _, out := range tx.Outputs {
+				fmt.Println("out:", string(out.People), ":", out.ReceiveAmount)
+			}
+
+			for _, in := range tx.Inputs {
+				fmt.Println("input", string(in.People), ":", hex.EncodeToString(in.Hash), ":", in.Index)
+			}
+			println()
+		}
+		unspentTxsArray = GetTxsFromArraytxs(address, txs)
+	}
+
+	println("untxsArray的长度：", len(unspentTxsArray))
+
+	//txs := *Transaction{&Transaction{nil}}
+	if len(unspentTxsArray) != 0 {
+		// 三个点把txs解析后添加
+
+		// 拼接上了在txsArray中未花费的交易输出
+		unspentTxs = append(unspentTxs, unspentTxsArray...)
+		// 再来一次
+		unspentTxs = GetTxsFromArraytxs(address, unspentTxs)
+
+		fmt.Println("unspentTxs拼接后的状态:")
+		for _, tx := range unspentTxs {
+			fmt.Println("txhash", hex.EncodeToString(tx.Hash))
+
+			for _, out := range tx.Outputs {
+				fmt.Println("out:", string(out.People), ":", out.ReceiveAmount)
+			}
+
+			for _, in := range tx.Inputs {
+				fmt.Println("input", string(in.People), ":", hex.EncodeToString(in.Hash), ":", in.Index)
+			}
+		}
+
+		//unspentTxs.
+	}
+	println("完成所有未消费的交易查询")
 	accumulated := 0
 
 Work:
 	for _, tx := range unspentTxs {
 		txID := hex.EncodeToString(tx.Hash)
+		fmt.Println(txID)
 		for outIdx, out := range tx.Outputs {
 			if out.ToAddressRight([]byte(address)) && accumulated < amount {
 				accumulated += out.ReceiveAmount
-				unspentOuts[txID] = outIdx
+				unspentOuts[string(tx.Hash)] = outIdx
 				if accumulated >= amount {
 					break Work
 				}
@@ -314,4 +394,56 @@ Work:
 		}
 	}
 	return accumulated, unspentOuts
+}
+
+// 通过高度查询区块信息
+func (bc *BlockChain) FindBlockFromHeight(height int) *Block {
+	//通过迭代器找到高度为height的区块
+	iterator := bc.initChainIterator()
+	for {
+		block := iterator.Iterator()
+		if block.Height == int64(height) {
+			return block
+		}
+		var hashInt big.Int
+		hashInt.SetBytes(block.PreHash)
+		if hashInt.Cmp(big.NewInt(0)) == 0 {
+			//fmt.Println("遍历完成...")
+			break
+		}
+
+	}
+	return nil
+}
+
+// 打印单个区块的信息
+func (block *Block) PrintBlock() {
+	println("----------------------------------------------------------------------------------------------------------------")
+	fmt.Println("|                                BlockHash:", hex.EncodeToString(block.Hash), "                                          |")
+	fmt.Println("|                                Height：", block.Height, "                                                              |")
+	fmt.Println("|                                Nonce： ", block.Nonce, "                                                                |")
+	fmt.Println("|                                PreHash:", hex.EncodeToString(block.PreHash), "                                          |")
+	fmt.Println("|                                TimeStamp：", time.Unix(block.Timestamp, 0).Format("2006-01-02 03:04:05 PM"), "                                          |")
+	fmt.Println("Txs：")
+
+	for i := 0; i < len(block.Transactions); i++ {
+		fmt.Println("----------------------------第", i, "笔交易-------------------------------------")
+		fmt.Println("TxHash", hex.EncodeToString(block.Transactions[i].Hash))
+		fmt.Println("TxInput:")
+		for j := 0; j < len(block.Transactions[i].Inputs); j++ {
+			fmt.Println("----------------------------第", i, "笔交易的第", j, "个input-------------------------------------")
+			fmt.Println("Sender:", string(block.Transactions[i].Inputs[j].People[:]))
+			fmt.Println("UseTxHash:", hex.EncodeToString(block.Transactions[i].Inputs[j].Hash[:]))
+			fmt.Println("UseTxIndex:", block.Transactions[i].Inputs[j].Index)
+		}
+
+		//fmt.Println("")
+		fmt.Println("交易Output:")
+		for k := 0; k < len(block.Transactions[i].Outputs); k++ {
+			fmt.Println("----------------------------第", i, "笔交易的第", k, "个output-------------------------------------")
+			fmt.Println("Amount:", block.Transactions[i].Outputs[k].ReceiveAmount)
+			fmt.Println("Receiver:", string(block.Transactions[i].Outputs[k].People[:]))
+		}
+	}
+
 }

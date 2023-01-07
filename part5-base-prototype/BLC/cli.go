@@ -15,13 +15,13 @@ func (cli *CommandLine) printUsage() {
 	fmt.Println("--------------------------------------------------------------------------------------------------------------")
 	fmt.Println("运行本区块链您首先需要创建区块链并生成创世区块.")
 	fmt.Println("以下命令供您使用：")
-	fmt.Println("--------------------------------------------------------------------------------------------------------------")
-	fmt.Println("createblockchain  -address string                        ----> 输入数据创建一个创建一个创世区块")
-	fmt.Println("view                                       ----> 查看链中的所有区块交易信息")
-	fmt.Println("indexblock -key []byte{}  没有实现                      ----> 输入区块hash，返回一个区块的信息")
-	fmt.Println("send     -from []string  -to []string -amount []string                        ----> 输入数据创建一个新的区块 string")
-	fmt.Println("stop                                    ----> 输入数据创建一个新的区块 string")
-	fmt.Println("getbalance -address string                                   ----> 输入数据创建一个新的区块 string")
+	//fmt.Println("--------------------------------------------------------------------------------------------------------------")
+	fmt.Println("createblockchain  -address string                                             ----> 输入数据创建一个创建一个创世区块")
+	fmt.Println("view                                                                          ----> 查看链中的所有区块交易信息")
+	fmt.Println("findblockfromheight -height	int                                            ----> 输入区块高度，返回一个区块的信息")
+	fmt.Println("send     -from []string  -to []string -amount []string                        ----> 输入数据创建一个新的区块")
+	fmt.Println("stop                                                                          ----> 关闭数据库")
+	fmt.Println("getbalance -address string                                                    ----> 返回这个账户的余额")
 	fmt.Println("--------------------------------------------------------------------------------------------------------------")
 }
 
@@ -35,12 +35,7 @@ func (cli *CommandLine) view() {
 	chain.ViewChainData()
 }
 func (cli *CommandLine) send(from, to, amount []string) {
-	//fmt.Println("传入的form:", from)
-	//fmt.Println("传入的to:", to)
-	//fmt.Println("传入的amount:", amount)
-	//fmt.Println("传入的数据是:", txns)
 	chain := ReturnChain()
-	//println("开始创建交易组")
 	transactions := chain.CreateTransactions(from, to, amount)
 	println(len(transactions))
 	if len(transactions) == 0 {
@@ -51,10 +46,17 @@ func (cli *CommandLine) send(from, to, amount []string) {
 	}
 
 }
-func (cli *CommandLine) indexblock(key []byte) {
+func (cli *CommandLine) findblockfromheight(height int) {
 	chain := ReturnChain()
-	//fmt.Println("输入的has是:", key)
-	chain.SingleCheck(key)
+	//如果输入的区块高度大于已经存在的区块，则返回信息
+	//chain.Tip
+	println("输入的高度是：", height)
+	block := chain.FindBlockFromHeight(height)
+	if block == nil {
+		println("没有您要查找的区块")
+	}
+	block.PrintBlock()
+
 }
 
 func (cli *CommandLine) validateArgs() {
@@ -71,7 +73,7 @@ func (cli *CommandLine) stop() {
 func (cli *CommandLine) getBalance(address string) {
 	println("输入的地址是：", address)
 	chain := ReturnChain()
-	balance, _ := chain.GetBalance(address)
+	balance, _ := chain.GetBalanceAndOutArray(address)
 	fmt.Println(address, "该地址拥有的金额为：", balance)
 }
 
@@ -82,12 +84,12 @@ func (cli *CommandLine) Run() {
 	flag.NewFlagSet("view", flag.ExitOnError)
 	flag.NewFlagSet("stop", flag.ExitOnError)
 	getBlockChainInfoCmd := flag.NewFlagSet("send", flag.ExitOnError)
-	sendCmd := flag.NewFlagSet("indexblock", flag.ExitOnError)
+	sendCmd := flag.NewFlagSet("findblockfromheight", flag.ExitOnError)
 	getBalanceCmd := flag.NewFlagSet("getbalance", flag.ExitOnError)
 
 	//createBlockChainOwner := createBlockChainCmd.String("data", "", "The address refer to the owner of blockchain")
 	//balanceAddress := balanceCmd.String("address", "", "Who need to get balance amount")
-	sendFromAddress := sendCmd.String("key", "", "输入区块hash值")
+	sendFromAddress := sendCmd.Int("height", 0, "输入区块高度")
 	createChain := CreateBlockChainCmd.String("address", "Daf", "输入创世区块初始化货币的地址")
 	fromaddress := getBlockChainInfoCmd.String("from", "发送者", "发送者数组")
 	toaddress := getBlockChainInfoCmd.String("to", "接收者", "接收者数组")
@@ -115,7 +117,7 @@ func (cli *CommandLine) Run() {
 		err := getBalanceCmd.Parse(os.Args[2:])
 		Handle(err)
 
-	case "indexblock":
+	case "findblockfromheight":
 		err := sendCmd.Parse(os.Args[2:])
 		Handle(err)
 
@@ -147,7 +149,7 @@ func (cli *CommandLine) Run() {
 		amount := JsonToArray(*amounts)
 
 		if len(from) == len(to) && len(to) == len(amount) {
-			fmt.Println("传入数据正确")
+			//fmt.Println("传入数据正确")
 			cli.send(from, to, amount)
 		} else {
 			fmt.Println("传入的数据有错误")
@@ -178,10 +180,10 @@ func (cli *CommandLine) Run() {
 	}
 
 	if sendCmd.Parsed() {
-		if *sendFromAddress == "" {
-			sendCmd.Usage()
-			runtime.Goexit()
-		}
-		cli.indexblock([]byte(*sendFromAddress))
+		//if *sendFromAddress == 0 {
+		//	sendCmd.Usage()
+		//	runtime.Goexit()
+		//}
+		cli.findblockfromheight(*sendFromAddress)
 	}
 }
