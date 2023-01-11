@@ -84,7 +84,6 @@ func (bc *BlockChain) CreateTransaction(from, to string, amount int, txs []*Tran
 
 	/*
 		先从txs中倒叙输出交易，先和txs中的进行比较，然后再进入数据库的tx比较
-
 	*/
 	if from == to {
 		println("发送地址和接受地址不能相同")
